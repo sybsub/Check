@@ -96,18 +96,27 @@ async function CheckProxyIP(proxyIP) {
     const responseText = new TextDecoder().decode(responseData);
     const statusMatch = responseText.match(/^HTTP\/\d\.\d\s+(\d+)/i);
     const statusCode = statusMatch ? parseInt(statusMatch[1]) : null;
-
+    
     // 判断是否成功
-    const isSuccessful = responseText.toLowerCase().includes('cloudflare');
+    function isValidProxyResponse(responseText, responseData) {
+      const statusMatch = responseText.match(/^HTTP\/\d\.\d\s+(\d+)/i);
+      const statusCode = statusMatch ? parseInt(statusMatch[1]) : null;
+      const looksLikeCloudflare = responseText.includes("cloudflare");
+      const isExpectedError = responseText.includes("plain HTTP request") || responseText.includes("400 Bad Request");
+      const hasBody = responseData.length > 100;
+    
+      return statusCode !== null && looksLikeCloudflare && isExpectedError && hasBody;
+    }
+    const isSuccessful = isValidProxyResponse(responseText, responseData);
 
     // 构建JSON响应
     const jsonResponse = {
       success: isSuccessful,
       proxyIP: isSuccessful ? proxyIP : -1,
       portRemote: isSuccessful ? portRemote : -1,
-      //statusCode: statusCode || null,
-      //responseSize: responseData.length,
-      //responseData: responseText,
+      statusCode: statusCode || null,
+      responseSize: responseData.length,
+      responseData: responseText,
       timestamp: new Date().toISOString(),
     };
 
