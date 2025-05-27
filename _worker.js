@@ -547,6 +547,28 @@ async function HTML(hostname) {
       background-color: #f0f8ff;
       border-color: #2196f3;
     }
+    .ip-info {
+      font-size: 12px;
+      color: #666;
+      margin-left: 10px;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .country-tag {
+      background-color: #e3f2fd;
+      color: #1976d2;
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-weight: 500;
+    }
+    .as-tag {
+      background-color: #f3e5f5;
+      color: #7b1fa2;
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-weight: 500;
+    }
     .status-icon {
       font-size: 18px;
       font-weight: bold;
@@ -684,11 +706,15 @@ curl "https://${hostname}/check?proxyip=1.2.3.4:443"
       const data = await response.json();
       
       if (data.success) {
+        // 获取IP信息
+        const ipInfo = await getIPInfo(data.proxyIP);
+        const ipInfoText = formatIPInfo(ipInfo);
+        
         resultDiv.className = 'success';
         resultDiv.innerHTML = \`
           <b>ProxyIP 有效!</b>
           <br><br>
-          <b>IP:</b> <span class="copy-value" onclick="copyToClipboard(this)">\${data.proxyIP}</span>
+          <b>IP:</b> <span class="copy-value" onclick="copyToClipboard(this)">\${data.proxyIP}</span> \${ipInfoText}
           <br>
           <b>端口:</b> <span class="copy-value" onclick="copyToClipboard(this)">\${data.portRemote}</span>
           <br>
@@ -743,36 +769,52 @@ curl "https://${hostname}/check?proxyip=1.2.3.4:443"
         <b>端口:</b> <span class="copy-value" onclick="copyToClipboard(this)">\${portRemote}</span>
         <br>
         <b>解析到的IP地址 (\${ips.length}个):</b>
-        <div id="ip-results">
-          \${ips.map(ip => \`
-            <div class="ip-result ip-checking" id="ip-\${ip.replace(/[\\[\\]:]/g, '-').replace(/\\./g, '-')}\">
-              <span>\${ip}</span>
+        <br><br>
+        \${ips.map(ip => \`
+          <div style="margin-bottom: 15px;">
+            <b>IP:</b> <span class="copy-value" onclick="copyToClipboard(this)">\${ip}</span> <span id="info-\${ip.replace(/[\\[\\]:]/g, '-').replace(/\\./g, '-')}">获取信息中...</span>
+            <div class="ip-result ip-checking" id="ip-\${ip.replace(/[\\[\\]:]/g, '-').replace(/\\./g, '-')}" style="margin-top: 5px;">
+              <span>连接状态检查中...</span>
               <span class="status-icon status-checking">🔄</span>
             </div>
-          \`).join('')}
-        </div>
+          </div>
+        \`).join('')}
         <br>
         <b>检测时间:</b> \${new Date().toLocaleString()}
       \`;
       resultDiv.style.display = 'block';
       
-      // 并发检查所有IP
+      // 并发检查所有IP和获取IP信息
       const checkPromises = ips.map(ip => checkIPStatus(\`\${ip}:\${portRemote}\`));
-      const results = await Promise.all(checkPromises);
+      const ipInfoPromises = ips.map(ip => getIPInfo(ip));
+      
+      const [results, ipInfoResults] = await Promise.all([
+        Promise.all(checkPromises),
+        Promise.all(ipInfoPromises)
+      ]);
       
       // 更新结果
       results.forEach((result, index) => {
         const ip = ips[index];
+        const ipInfo = ipInfoResults[index];
         const ipElement = document.getElementById(\`ip-\${ip.replace(/[\\[\\]:]/g, '-').replace(/\\./g, '-')}\`);
+        const infoElement = document.getElementById(\`info-\${ip.replace(/[\\[\\]:]/g, '-').replace(/\\./g, '-')}\`);
+        
+        // 更新IP信息
+        infoElement.innerHTML = formatIPInfo(ipInfo);
         
         if (result.success) {
           ipElement.className = 'ip-result ip-valid';
-          ipElement.querySelector('.status-icon').innerHTML = '✅';
-          ipElement.querySelector('.status-icon').className = 'status-icon status-valid';
+          ipElement.innerHTML = \`
+            <span>ProxyIP 有效</span>
+            <span class="status-icon status-valid">✅</span>
+          \`;
         } else {
           ipElement.className = 'ip-result ip-invalid';
-          ipElement.querySelector('.status-icon').innerHTML = '❌';
-          ipElement.querySelector('.status-icon').className = 'status-icon status-invalid';
+          ipElement.innerHTML = \`
+            <span>ProxyIP 失效\${result.error ? ' - ' + result.error : ''}</span>
+            <span class="status-icon status-invalid">❌</span>
+          \`;
         }
       });
       
@@ -785,6 +827,30 @@ curl "https://${hostname}/check?proxyip=1.2.3.4:443"
       } else {
         resultDiv.className = 'success result-partial';
       }
+    }
+    
+    async function getIPInfo(ip) {
+      try {
+        // 移除IPv6的方括号
+        const cleanIP = ip.replace(/[\\[\\]]/g, '');
+        const response = await fetch(\`./ip-info?ip=\${encodeURIComponent(cleanIP)}\`);
+        const data = await response.json();
+        return data;
+      } catch (error) {
+        console.error('获取IP信息失败:', error);
+        return null;
+      }
+    }
+    
+    function formatIPInfo(ipInfo) {
+      if (!ipInfo || ipInfo.status !== 'success') {
+        return '<span style="color: #999;">信息获取失败</span>';
+      }
+      
+      const country = ipInfo.country || '未知';
+      const as = ipInfo.as || '未知';
+      
+      return \`<span class="country-tag">\${country}</span> <span class="as-tag">\${as}</span>\`;
     }
     
     async function checkIPStatus(ip) {
