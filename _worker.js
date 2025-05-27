@@ -25,19 +25,151 @@ export default {
           "Access-Control-Allow-Origin": "*"
         }
       });
+    } else if (path.toLowerCase() === '/resolve') {
+      if (!url.searchParams.has('domain')) return new Response('Missing domain parameter', { status: 400 });
+      const domain = url.searchParams.get('domain');
+
+      try {
+        const ips = await resolveDomain(domain);
+        return new Response(JSON.stringify({ success: true, domain, ips }), {
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*"
+          }
+        });
+      } catch (error) {
+        return new Response(JSON.stringify({ success: false, error: error.message }), {
+          status: 500,
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*"
+          }
+        });
+      }
+    } else if (path.toLowerCase() === '/ip-info') {
+      let ip = url.searchParams.get('ip') || request.headers.get('CF-Connecting-IP');
+      if (!ip) {
+        return new Response(JSON.stringify({ 
+          status: "error",
+          message: "IP参数未提供",
+          code: "MISSING_PARAMETER",
+          timestamp: new Date().toISOString()
+        }, null, 4), {
+          status: 400,
+          headers: {
+            "content-type": "application/json; charset=UTF-8",
+            'Access-Control-Allow-Origin': '*'
+          }
+        });
+      }
+
+      if (ip.includes('[')) {
+        ip = ip.replace('[', '').replace(']', '');
+      }
+
+      try {
+        // 使用Worker代理请求HTTP的IP API
+        const response = await fetch(`http://ip-api.com/json/${ip}?lang=zh-CN`);
+
+        if (!response.ok) {
+          throw new Error(`HTTP error: ${response.status}`);
+        }
+
+        const data = await response.json();
+        
+        // 添加时间戳到成功的响应数据中
+        data.timestamp = new Date().toISOString();
+
+        // 返回数据给客户端，并添加CORS头
+        return new Response(JSON.stringify(data, null, 4), {
+          headers: {
+            "content-type": "application/json; charset=UTF-8",
+            'Access-Control-Allow-Origin': '*'
+          }
+        });
+
+      } catch (error) {
+        console.error("IP查询失败:", error);
+        return new Response(JSON.stringify({
+          status: "error",
+          message: `IP查询失败: ${error.message}`,
+          code: "API_REQUEST_FAILED",
+          query: ip,
+          timestamp: new Date().toISOString(),
+          details: {
+            errorType: error.name,
+            stack: error.stack ? error.stack.split('\n')[0] : null
+          }
+        }, null, 4), {
+          status: 500,
+          headers: {
+            "content-type": "application/json; charset=UTF-8",
+            'Access-Control-Allow-Origin': '*'
+          }
+        });
+      }
     } else {
       return await HTML(hostname);
     }
   }
 };
 
-// 封装成CheckProxyIP函数
+// 新增域名解析函数
+async function resolveDomain(domain) {
+  domain = domain.includes(':') ? domain.split(':')[0] : domain;
+  try {
+    // 并发请求IPv4和IPv6记录
+    const [ipv4Response, ipv6Response] = await Promise.all([
+      fetch(`https://1.1.1.1/dns-query?name=${domain}&type=A`, {
+        headers: { 'Accept': 'application/dns-json' }
+      }),
+      fetch(`https://1.1.1.1/dns-query?name=${domain}&type=AAAA`, {
+        headers: { 'Accept': 'application/dns-json' }
+      })
+    ]);
+
+    const [ipv4Data, ipv6Data] = await Promise.all([
+      ipv4Response.json(),
+      ipv6Response.json()
+    ]);
+
+    const ips = [];
+
+    // 添加IPv4地址
+    if (ipv4Data.Answer) {
+      const ipv4Addresses = ipv4Data.Answer
+        .filter(record => record.type === 1) // A记录
+        .map(record => record.data);
+      ips.push(...ipv4Addresses);
+    }
+
+    // 添加IPv6地址
+    if (ipv6Data.Answer) {
+      const ipv6Addresses = ipv6Data.Answer
+        .filter(record => record.type === 28) // AAAA记录
+        .map(record => `[${record.data}]`); // IPv6地址用方括号包围
+      ips.push(...ipv6Addresses);
+    }
+
+    if (ips.length === 0) {
+      throw new Error('No A or AAAA records found');
+    }
+
+    return ips;
+  } catch (error) {
+    throw new Error(`DNS resolution failed: ${error.message}`);
+  }
+}
+
 async function CheckProxyIP(proxyIP) {
   //const portRemote = proxyIP.includes('.tp') ? parseInt(proxyIP.split('.tp')[1].split('.')[0]) || 443 : 443;
   let portRemote = 443;
   if (proxyIP.includes('.tp')) {
     const portMatch = proxyIP.match(/\.tp(\d+)\./);
     if (portMatch) portRemote = parseInt(portMatch[1]);
+  } else if (proxyIP.includes('[') && proxyIP.includes(']:')) {
+    portRemote = parseInt(proxyIP.split(']:')[1]);
+    proxyIP = proxyIP.split(']:')[0] + ']';
   } else if (proxyIP.includes(':')) {
     portRemote = parseInt(proxyIP.split(':')[1]);
     proxyIP = proxyIP.split(':')[0];
@@ -96,7 +228,7 @@ async function CheckProxyIP(proxyIP) {
     const responseText = new TextDecoder().decode(responseData);
     const statusMatch = responseText.match(/^HTTP\/\d\.\d\s+(\d+)/i);
     const statusCode = statusMatch ? parseInt(statusMatch[1]) : null;
-    
+
     // 判断是否成功
     function isValidProxyResponse(responseText, responseData) {
       const statusMatch = responseText.match(/^HTTP\/\d\.\d\s+(\d+)/i);
@@ -104,7 +236,7 @@ async function CheckProxyIP(proxyIP) {
       const looksLikeCloudflare = responseText.includes("cloudflare");
       const isExpectedError = responseText.includes("plain HTTP request") || responseText.includes("400 Bad Request");
       const hasBody = responseData.length > 100;
-    
+
       return statusCode !== null && looksLikeCloudflare && isExpectedError && hasBody;
     }
     const isSuccessful = isValidProxyResponse(responseText, responseData);
@@ -232,6 +364,7 @@ async function HTML(hostname) {
       transition: all 0.3s ease;
       position: relative;
       overflow: hidden;
+      min-width: 80px;
     }
     .btn-check:hover {
       background-color: #2980b9;
@@ -242,35 +375,17 @@ async function HTML(hostname) {
       transform: translateY(0);
       box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
     }
-    .btn-check::after {
-      content: "";
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      width: 5px;
-      height: 5px;
-      background: rgba(255, 255, 255, 0.5);
-      opacity: 0;
-      border-radius: 100%;
-      transform: scale(1, 1) translate(-50%);
-      transform-origin: 50% 50%;
+    .btn-check:disabled {
+      background-color: #95a5a6;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
     }
-    .btn-check:focus:not(:active)::after {
-      animation: ripple 0.6s ease-out;
-    }
-    @keyframes ripple {
-      0% {
-        transform: scale(0, 0);
-        opacity: 1;
-      }
-      20% {
-        transform: scale(25, 25);
-        opacity: 0.8;
-      }
-      100% {
-        transform: scale(50, 50);
-        opacity: 0;
-      }
+    .btn-check.loading {
+      background-color: #95a5a6;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
     }
     #result {
       margin-top: 20px;
@@ -411,6 +526,55 @@ async function HTML(hostname) {
         animation: octocat-wave 560ms ease-in-out;
       }
     }
+    .ip-result {
+      margin: 8px 0;
+      padding: 10px;
+      border-radius: 5px;
+      border: 1px solid #ddd;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .ip-valid {
+      background-color: #e8f8e8;
+      border-color: #4caf50;
+    }
+    .ip-invalid {
+      background-color: #fee;
+      border-color: #f44336;
+    }
+    .ip-checking {
+      background-color: #f0f8ff;
+      border-color: #2196f3;
+    }
+    .status-icon {
+      font-size: 18px;
+      font-weight: bold;
+      margin-left: 10px;
+    }
+    .status-valid {
+      color: #4caf50;
+    }
+    .status-invalid {
+      color: #f44336;
+    }
+    .status-checking {
+      color: #2196f3;
+    }
+    .result-all-valid {
+      background-color: #e8f8f5 !important;
+      border-color: #16a085 !important;
+      color: #16a085 !important;
+    }
+    .result-all-invalid {
+      background-color: #fdedeb !important;
+      border-color: #c0392b !important;
+      color: #c0392b !important;
+    }
+    .result-partial {
+      background-color: #fff8e1 !important;
+      border-color: #ff9800 !important;
+    }
   </style>
 </head>
 <body>
@@ -431,7 +595,6 @@ async function HTML(hostname) {
       </div>
       <button id="checkBtn" class="btn-check" onclick="checkProxyIP()">检查</button>
     </div>
-    <div class="loader" id="loader"></div>
     <div id="result"></div>
   </div>
   
@@ -469,7 +632,6 @@ curl "https://${hostname}/check?proxyip=1.2.3.4:443"
     async function checkProxyIP() {
       const proxyipInput = document.getElementById('proxyip');
       const resultDiv = document.getElementById('result');
-      const loader = document.getElementById('loader');
       const checkBtn = document.getElementById('checkBtn');
       
       const proxyip = proxyipInput.value.trim();
@@ -481,44 +643,167 @@ curl "https://${hostname}/check?proxyip=1.2.3.4:443"
       }
       
       // 显示加载状态
-      loader.style.display = 'block';
       checkBtn.disabled = true;
+      checkBtn.classList.add('loading');
       resultDiv.style.display = 'none';
       
       try {
-        const response = await fetch(\`./check?proxyip=\${encodeURIComponent(proxyip)}\`);
-        const data = await response.json();
-        
-        // 处理结果
-        if (data.success) {
-          resultDiv.className = 'success';
-          resultDiv.innerHTML = \`
-            <b>ProxyIP 有效!</b>
-            <br><br>
-            <b>代理IP:</b> <span class="copy-value" onclick="copyToClipboard(this)">\${data.proxyIP}</span>
-            <br>
-            <b>端口:</b> <span class="copy-value" onclick="copyToClipboard(this)">\${data.portRemote}</span>
-            <br>
-            <b>检测时间:</b> \${new Date(data.timestamp).toLocaleString()}
-          \`;
+        // 检查输入是否为IP地址
+        if (isIPAddress(proxyip)) {
+          // 直接检查IP
+          await checkSingleIP(proxyip, resultDiv);
         } else {
-          resultDiv.className = 'error';
-          resultDiv.innerHTML = \`
-            <b>ProxyIP 失效!</b>
-            <br><br>
-            \${data.error ? \`<b>错误信息:</b> \${data.error}<br>\` : ''}
-            <b>检测时间:</b> \${new Date(data.timestamp).toLocaleString()}
-          \`;
+          // 解析域名并检查所有IP
+          await checkDomain(proxyip, resultDiv);
         }
       } catch (err) {
         resultDiv.className = 'error';
         resultDiv.innerHTML = \`检查过程中发生错误: \${err.message}\`;
-      } finally {
-        loader.style.display = 'none';
-        checkBtn.disabled = false;
         resultDiv.style.display = 'block';
+      } finally {
+        checkBtn.disabled = false;
+        checkBtn.classList.remove('loading');
       }
     }
+    
+    function isIPAddress(input) {
+      // IPv4正则表达式
+      const ipv4Regex = /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
+      // IPv6正则表达式（支持带端口的格式 [ipv6]:port）
+      const ipv6Regex = /^\\[?([0-9a-fA-F]{0,4}:){1,7}[0-9a-fA-F]{0,4}\\]?$/;
+      // IPv6带端口格式 [ipv6]:port
+      const ipv6WithPortRegex = /^\\[[0-9a-fA-F:]+\\]:\\d+$/;
+      // 普通IPv4带端口格式
+      const ipv4WithPortRegex = /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?):\\d+$/;
+      
+      return ipv4Regex.test(input) || ipv6Regex.test(input) || ipv6WithPortRegex.test(input) || ipv4WithPortRegex.test(input);
+    }
+    
+    async function checkSingleIP(proxyip, resultDiv) {
+      const response = await fetch(\`./check?proxyip=\${encodeURIComponent(proxyip)}\`);
+      const data = await response.json();
+      
+      if (data.success) {
+        resultDiv.className = 'success';
+        resultDiv.innerHTML = \`
+          <b>ProxyIP 有效!</b>
+          <br><br>
+          <b>IP:</b> <span class="copy-value" onclick="copyToClipboard(this)">\${data.proxyIP}</span>
+          <br>
+          <b>端口:</b> <span class="copy-value" onclick="copyToClipboard(this)">\${data.portRemote}</span>
+          <br>
+          <b>检测时间:</b> \${new Date(data.timestamp).toLocaleString()}
+        \`;
+      } else {
+        resultDiv.className = 'error';
+        resultDiv.innerHTML = \`
+          <b>ProxyIP 失效!</b>
+          <br><br>
+          \${data.error ? \`<b>错误信息:</b> \${data.error}<br>\` : ''}
+          <b>检测时间:</b> \${new Date(data.timestamp).toLocaleString()}
+        \`;
+      }
+      resultDiv.style.display = 'block';
+    }
+    
+    async function checkDomain(domain, resultDiv) {
+      // 提取端口信息和清理域名
+      let portRemote = 443;
+      let cleanDomain = domain;
+      
+      if (domain.includes('.tp')) {
+        portRemote = domain.split('.tp')[1].split('.')[0] || 443;
+      } else if (domain.includes('[') && domain.includes(']:')) {
+        portRemote = parseInt(domain.split(']:')[1]) || 443;
+        cleanDomain = domain.split(']:')[0] + ']';
+      } else if (domain.includes(':')) {
+        portRemote = parseInt(domain.split(':')[1]) || 443;
+        cleanDomain = domain.split(':')[0];
+      }
+      
+      // 解析域名（使用清理后的域名）
+      const resolveResponse = await fetch(\`./resolve?domain=\${encodeURIComponent(cleanDomain)}\`);
+      const resolveData = await resolveResponse.json();
+      
+      if (!resolveData.success) {
+        throw new Error(resolveData.error || '域名解析失败');
+      }
+      
+      const ips = resolveData.ips;
+      if (!ips || ips.length === 0) {
+        throw new Error('未找到域名对应的IP地址');
+      }
+
+      // 显示初始结果
+      resultDiv.innerHTML = \`
+        <b>域名解析结果</b>
+        <br><br>
+        <b>域名:</b> <span class="copy-value" onclick="copyToClipboard(this)">\${cleanDomain}</span>
+        <br>
+        <b>端口:</b> <span class="copy-value" onclick="copyToClipboard(this)">\${portRemote}</span>
+        <br>
+        <b>解析到的IP地址 (\${ips.length}个):</b>
+        <div id="ip-results">
+          \${ips.map(ip => \`
+            <div class="ip-result ip-checking" id="ip-\${ip.replace(/[\\[\\]:]/g, '-').replace(/\\./g, '-')}\">
+              <span>\${ip}</span>
+              <span class="status-icon status-checking">🔄</span>
+            </div>
+          \`).join('')}
+        </div>
+        <br>
+        <b>检测时间:</b> \${new Date().toLocaleString()}
+      \`;
+      resultDiv.style.display = 'block';
+      
+      // 并发检查所有IP
+      const checkPromises = ips.map(ip => checkIPStatus(\`\${ip}:\${portRemote}\`));
+      const results = await Promise.all(checkPromises);
+      
+      // 更新结果
+      results.forEach((result, index) => {
+        const ip = ips[index];
+        const ipElement = document.getElementById(\`ip-\${ip.replace(/[\\[\\]:]/g, '-').replace(/\\./g, '-')}\`);
+        
+        if (result.success) {
+          ipElement.className = 'ip-result ip-valid';
+          ipElement.querySelector('.status-icon').innerHTML = '✅';
+          ipElement.querySelector('.status-icon').className = 'status-icon status-valid';
+        } else {
+          ipElement.className = 'ip-result ip-invalid';
+          ipElement.querySelector('.status-icon').innerHTML = '❌';
+          ipElement.querySelector('.status-icon').className = 'status-icon status-invalid';
+        }
+      });
+      
+      // 根据整体结果设置背景色
+      const validCount = results.filter(r => r.success).length;
+      if (validCount === results.length) {
+        resultDiv.className = 'success result-all-valid';
+      } else if (validCount === 0) {
+        resultDiv.className = 'error result-all-invalid';
+      } else {
+        resultDiv.className = 'success result-partial';
+      }
+    }
+    
+    async function checkIPStatus(ip) {
+      try {
+        const response = await fetch(\`./check?proxyip=\${encodeURIComponent(ip)}\`);
+        const data = await response.json();
+        return data;
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    }
+    
+    // 支持回车键提交
+    document.getElementById('proxyip').addEventListener('keypress', function(event) {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        document.getElementById('checkBtn').click();
+      }
+    });
     
     function copyToClipboard(element) {
       const text = element.textContent;
@@ -532,14 +817,6 @@ curl "https://${hostname}/check?proxyip=1.2.3.4:443"
         console.error('复制失败:', err);
       });
     }
-    
-    // 支持回车键提交
-    document.getElementById('proxyip').addEventListener('keypress', function(event) {
-      if (event.key === 'Enter') {
-        event.preventDefault();
-        document.getElementById('checkBtn').click();
-      }
-    });
   </script>
 </body>
 </html>
