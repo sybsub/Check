@@ -49,7 +49,7 @@ export default {
     } else if (path.toLowerCase() === '/ip-info') {
       let ip = url.searchParams.get('ip') || request.headers.get('CF-Connecting-IP');
       if (!ip) {
-        return new Response(JSON.stringify({ 
+        return new Response(JSON.stringify({
           status: "error",
           message: "IP参数未提供",
           code: "MISSING_PARAMETER",
@@ -76,7 +76,7 @@ export default {
         }
 
         const data = await response.json();
-        
+
         // 添加时间戳到成功的响应数据中
         data.timestamp = new Date().toISOString();
 
@@ -109,6 +109,19 @@ export default {
         });
       }
     } else {
+      if (path.startsWith('/') && path.length > 1) {
+        const pathContent = path.substring(1);
+
+        // 检查是否符合域名格式或IP格式
+        if (isValidProxyIPFormat(pathContent)) {
+          // 重定向到首页并传递proxyip参数
+          const redirectUrl = new URL(request.url);
+          redirectUrl.pathname = '/';
+          redirectUrl.searchParams.set('autocheck', pathContent);
+
+          return Response.redirect(redirectUrl.toString(), 302);
+        }
+      }
       return await HTML(hostname);
     }
   }
@@ -266,6 +279,25 @@ async function CheckProxyIP(proxyIP) {
       error: error.message || error.toString()
     };
   }
+}
+
+// 新增函数：检查是否为有效的ProxyIP格式
+function isValidProxyIPFormat(input) {
+  // 检查是否为域名格式
+  const domainRegex = /^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$/;
+  // 检查是否为IP格式
+  const ipv4Regex = /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
+  const ipv6Regex = /^\[?([0-9a-fA-F]{0,4}:){1,7}[0-9a-fA-F]{0,4}\]?$/;
+
+  // 允许带端口的格式
+  const withPortRegex = /^.+:\d+$/;
+  const tpPortRegex = /^.+\.tp\d+\./;
+
+  return domainRegex.test(input) ||
+    ipv4Regex.test(input) ||
+    ipv6Regex.test(input) ||
+    withPortRegex.test(input) ||
+    tpPortRegex.test(input);
 }
 
 async function HTML(hostname) {
@@ -934,6 +966,25 @@ curl "https://${hostname}/check?proxyip=1.2.3.4:443"
     document.addEventListener('DOMContentLoaded', function() {
       const input = document.getElementById('proxyip');
       input.focus();
+      
+      // 检查URL参数，如果有autocheck参数则自动填写并搜索
+      const urlParams = new URLSearchParams(window.location.search);
+      const autoCheckValue = urlParams.get('autocheck');
+      
+      if (autoCheckValue) {
+        input.value = autoCheckValue;
+        // 清除URL参数，避免重复触发
+        const newUrl = new URL(window.location);
+        newUrl.searchParams.delete('autocheck');
+        window.history.replaceState({}, '', newUrl);
+        
+        // 延迟执行搜索，确保页面完全加载
+        setTimeout(() => {
+          if (!isChecking) {
+            checkProxyIP();
+          }
+        }, 500);
+      }
       
       // 输入框回车事件
       input.addEventListener('keypress', function(event) {
