@@ -323,32 +323,6 @@ async function HTML(hostname, 网站图标) {
       overflow-x: hidden;
     }
     
-    body::before {
-      content: "";
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000"><defs><g id="virus"><circle cx="0" cy="0" r="3" fill="rgba(255,255,255,0.1)"><animate attributeName="r" values="2;5;2" dur="3s" repeatCount="indefinite"/></circle><circle cx="0" cy="0" r="8" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="1"><animate attributeName="r" values="6;12;6" dur="4s" repeatCount="indefinite"/></circle></g></defs><use href="%23virus" x="100" y="150"><animateTransform attributeName="transform" type="translate" values="100,150; 120,170; 80,130; 100,150" dur="8s" repeatCount="indefinite"/></use><use href="%23virus" x="300" y="250"><animateTransform attributeName="transform" type="translate" values="300,250; 280,280; 320,220; 300,250" dur="6s" repeatCount="indefinite"/></use><use href="%23virus" x="700" y="100"><animateTransform attributeName="transform" type="translate" values="700,100; 720,120; 680,80; 700,100" dur="7s" repeatCount="indefinite"/></use><use href="%23virus" x="850" y="400"><animateTransform attributeName="transform" type="translate" values="850,400; 830,420; 870,380; 850,400" dur="5s" repeatCount="indefinite"/></use><use href="%23virus" x="200" y="600"><animateTransform attributeName="transform" type="translate" values="200,600; 220,580; 180,620; 200,600" dur="9s" repeatCount="indefinite"/></use><use href="%23virus" x="600" y="700"><animateTransform attributeName="transform" type="translate" values="600,700; 580,720; 620,680; 600,700" dur="4s" repeatCount="indefinite"/></use><line x1="100" y1="150" x2="300" y2="250" stroke="rgba(255,255,255,0.03)" stroke-width="1"><animate attributeName="stroke-opacity" values="0;0.1;0" dur="5s" repeatCount="indefinite"/></line><line x1="300" y1="250" x2="700" y2="100" stroke="rgba(255,255,255,0.03)" stroke-width="1"><animate attributeName="stroke-opacity" values="0;0.1;0" dur="6s" repeatCount="indefinite" begin="1s"/></line><line x1="700" y1="100" x2="850" y2="400" stroke="rgba(255,255,255,0.03)" stroke-width="1"><animate attributeName="stroke-opacity" values="0;0.1;0" dur="4s" repeatCount="indefinite" begin="2s"/></line><line x1="200" y1="600" x2="600" y2="700" stroke="rgba(255,255,255,0.03)" stroke-width="1"><animate attributeName="stroke-opacity" values="0;0.1;0" dur="7s" repeatCount="indefinite" begin="3s"/></line></svg>') no-repeat;
-      background-size: 100% 100%;
-      animation: virusBackground 20s linear infinite;
-      z-index: -1;
-    }
-    
-    body::after {
-      content: "";
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000"><defs><g id="smallVirus"><circle cx="0" cy="0" r="1.5" fill="rgba(255,255,255,0.08)"><animate attributeName="r" values="1;3;1" dur="2s" repeatCount="indefinite"/></circle></g></defs><use href="%23smallVirus" x="150" y="80"><animateTransform attributeName="transform" type="translate" values="150,80; 170,100; 130,60; 150,80" dur="12s" repeatCount="indefinite"/></use><use href="%23smallVirus" x="450" y="180"><animateTransform attributeName="transform" type="translate" values="450,180; 470,200; 430,160; 450,180" dur="10s" repeatCount="indefinite"/></use><use href="%23smallVirus" x="750" y="300"><animateTransform attributeName="transform" type="translate" values="750,300; 730,320; 770,280; 750,300" dur="8s" repeatCount="indefinite"/></use><use href="%23smallVirus" x="350" y="500"><animateTransform attributeName="transform" type="translate" values="350,500; 370,480; 330,520; 350,500" dur="11s" repeatCount="indefinite"/></use><use href="%23smallVirus" x="650" y="550"><animateTransform attributeName="transform" type="translate" values="650,550; 630,570; 670,530; 650,550" dur="9s" repeatCount="indefinite"/></use><use href="%23smallVirus" x="50" y="400"><animateTransform attributeName="transform" type="translate" values="50,400; 70,420; 30,380; 50,400" dur="7s" repeatCount="indefinite"/></use></svg>') no-repeat;
-      background-size: 100% 100%;
-      animation: virusBackground 25s linear infinite reverse;
-      z-index: -1;
-    }
-    
     .container {
       max-width: 1000px;
       margin: 0 auto;
@@ -767,29 +741,6 @@ async function HTML(hostname, 网站图标) {
       to {
         opacity: 1;
         transform: translateY(0);
-      }
-    }
-    
-    @keyframes virusBackground {
-      0% {
-        transform: translate(0, 0) scale(1) rotate(0deg);
-        opacity: 0.6;
-      }
-      25% {
-        transform: translate(-20px, -10px) scale(1.1) rotate(90deg);
-        opacity: 0.8;
-      }
-      50% {
-        transform: translate(10px, -30px) scale(0.9) rotate(180deg);
-        opacity: 1;
-      }
-      75% {
-        transform: translate(-15px, 20px) scale(1.05) rotate(270deg);
-        opacity: 0.7;
-      }
-      100% {
-        transform: translate(0, 0) scale(1) rotate(360deg);
-        opacity: 0.6;
       }
     }
     
