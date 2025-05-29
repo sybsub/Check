@@ -37,7 +37,7 @@ https://check.proxyip.cmliussss.net
 ### API 接口
 
 #### 🔗 检查单个 ProxyIP
-
+- `proxyip` 参数支持 IPv4、IPv6 地址和域名，端口号可选，不填默认为 443。
 ```bash
 # 检查带端口的 IP
 curl "https://check.proxyip.cmliussss.net/check?proxyip=1.2.3.4:443"
@@ -50,6 +50,12 @@ curl "https://check.proxyip.cmliussss.net/check?proxyip=[2001:db8::1]:443"
 
 # 检查域名
 curl "https://check.proxyip.cmliussss.net/check?proxyip=example.com:443"
+```
+
+- 设置 `TOKEN` 变量后，需要在路径中添加 `token=your-secret-token` 才能使用接口。
+
+```bash
+curl "https://check.proxyip.cmliussss.net/check?proxyip=1.2.3.4:443&token=your-secret-token"
 ```
 
 #### 📄 响应格式
@@ -70,6 +76,7 @@ curl "https://check.proxyip.cmliussss.net/check?proxyip=example.com:443"
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | `proxyip` | string | ✅ | 要检测的代理IP地址，支持IPv4、IPv6和域名 |
+| `token` | string | ❌ | 设置 `TOKEN` 变量后，需要在路径中添加 `token=your-secret-token` 才能使用接口。 |
 
 #### 📊 响应字段
 
@@ -81,6 +88,15 @@ curl "https://check.proxyip.cmliussss.net/check?proxyip=example.com:443"
 | `statusCode` | number | HTTP状态码 |
 | `responseSize` | number | 响应数据大小（字节） |
 | `timestamp` | string | 检测时间戳 |
+
+## 🔧 环境变量配置
+
+| 变量名 | 说明 | 示例 | 必需 |
+|--------|------|------|------|
+| `TOKEN` | API 访问令牌，用于保护接口（设置`TOKEN`之后，首页会变成**nginx**，避免变成公共服务） | `your-secret-token` | 否 |
+| `URL302` | 302跳转伪装首页 | `https://example.com` | 否 |
+| `URL` | 反向代理伪装首页 | `https://example.com` | 否 |
+| `ICO` | 网站图标 URL | `https://example.com/favicon.ico` | 否 |
 
 ## 📄 许可证
 

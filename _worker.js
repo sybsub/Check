@@ -1,17 +1,39 @@
 import { connect } from "cloudflare:sockets";
-
+let 临时TOKEN, 永久TOKEN;
 export default {
   async fetch(request, env, ctx) {
     const 网站图标 = env.ICO || 'https://cf-assets.www.cloudflare.com/dzlvafdwdttg/19kSkLSfWtDcspvQI5pit4/c5630cf25d589a0de91978ca29486259/performance-acceleration-bolt.svg';
     const url = new URL(request.url);
     const path = url.pathname;
     const hostname = url.hostname;
+    const currentDate = new Date();
+    currentDate.setHours(0, 0, 0, 0);
+    const timestamp = Math.ceil(currentDate.getTime() / (1000 * 60 * 30)); // 每30分钟一个时间戳
+    临时TOKEN = await 双重哈希(url.hostname + timestamp);
+    永久TOKEN = env.TOKEN || 临时TOKEN;
 
     // 不区分大小写检查路径
     if (path.toLowerCase() === '/check') {
       if (!url.searchParams.has('proxyip')) return new Response('Missing proxyip parameter', { status: 400 });
       if (url.searchParams.get('proxyip') === '') return new Response('Invalid proxyip parameter', { status: 400 });
       if (!url.searchParams.get('proxyip').includes('.') && !(url.searchParams.get('proxyip').includes('[') && url.searchParams.get('proxyip').includes(']'))) return new Response('Invalid proxyip format', { status: 400 });
+
+      if (env.TOKEN) {
+        if (!url.searchParams.has('token') || url.searchParams.get('token') !== 永久TOKEN) {
+          return new Response(JSON.stringify({
+            status: "error",
+            message: `ProxyIP查询失败: 无效的TOKEN`,
+            timestamp: new Date().toISOString()
+          }, null, 4), {
+            status: 403,
+            headers: {
+              "content-type": "application/json; charset=UTF-8",
+              'Access-Control-Allow-Origin': '*'
+            }
+          });
+        }
+      }
+
       // 获取参数中的IP或使用默认IP
       const proxyIP = url.searchParams.get('proxyip').toLowerCase();
 
@@ -27,6 +49,19 @@ export default {
         }
       });
     } else if (path.toLowerCase() === '/resolve') {
+      if (!url.searchParams.has('token') || (url.searchParams.get('token') !== 临时TOKEN) && (url.searchParams.get('token') !== 永久TOKEN)) {
+        return new Response(JSON.stringify({
+          status: "error",
+          message: `域名查询失败: 无效的TOKEN`,
+          timestamp: new Date().toISOString()
+        }, null, 4), {
+          status: 403,
+          headers: {
+            "content-type": "application/json; charset=UTF-8",
+            'Access-Control-Allow-Origin': '*'
+          }
+        });
+      }
       if (!url.searchParams.has('domain')) return new Response('Missing domain parameter', { status: 400 });
       const domain = url.searchParams.get('domain');
 
@@ -48,6 +83,19 @@ export default {
         });
       }
     } else if (path.toLowerCase() === '/ip-info') {
+      if (!url.searchParams.has('token') || (url.searchParams.get('token') !== 临时TOKEN) && (url.searchParams.get('token') !== 永久TOKEN)) {
+        return new Response(JSON.stringify({
+          status: "error",
+          message: `IP查询失败: 无效的TOKEN`,
+          timestamp: new Date().toISOString()
+        }, null, 4), {
+          status: 403,
+          headers: {
+            "content-type": "application/json; charset=UTF-8",
+            'Access-Control-Allow-Origin': '*'
+          }
+        });
+      }
       let ip = url.searchParams.get('ip') || request.headers.get('CF-Connecting-IP');
       if (!ip) {
         return new Response(JSON.stringify({
@@ -109,9 +157,21 @@ export default {
           }
         });
       }
-    } else if (path.toLowerCase() === '/favicon.ico') {
-      return Response.redirect(网站图标, 302);
     } else {
+      const envKey = env.URL302 ? 'URL302' : (env.URL ? 'URL' : null);
+      if (envKey) {
+        const URLs = await 整理(env[envKey]);
+        const URL = URLs[Math.floor(Math.random() * URLs.length)];
+        return envKey === 'URL302' ? Response.redirect(URL, 302) : fetch(new Request(URL, request));
+      } else if (env.TOKEN) {
+        return new Response(await nginx(), {
+          headers: {
+            'Content-Type': 'text/html; charset=UTF-8',
+          },
+        });
+      } else if (path.toLowerCase() === '/favicon.ico') {
+        return Response.redirect(网站图标, 302);
+      }
       // 直接返回HTML页面，路径解析交给前端处理
       return await HTML(hostname, 网站图标);
     }
@@ -270,6 +330,61 @@ async function CheckProxyIP(proxyIP) {
       error: error.message || error.toString()
     };
   }
+}
+
+async function 整理(内容) {
+  var 替换后的内容 = 内容.replace(/[\r\n]+/g, '|').replace(/\|+/g, '|');
+  const 地址数组 = 替换后的内容.split('|');
+  const 整理数组 = 地址数组.filter((item, index) => {
+    return item !== '' && 地址数组.indexOf(item) === index;
+  });
+
+  return 整理数组;
+}
+
+async function 双重哈希(文本) {
+  const 编码器 = new TextEncoder();
+
+  const 第一次哈希 = await crypto.subtle.digest('MD5', 编码器.encode(文本));
+  const 第一次哈希数组 = Array.from(new Uint8Array(第一次哈希));
+  const 第一次十六进制 = 第一次哈希数组.map(字节 => 字节.toString(16).padStart(2, '0')).join('');
+
+  const 第二次哈希 = await crypto.subtle.digest('MD5', 编码器.encode(第一次十六进制.slice(7, 27)));
+  const 第二次哈希数组 = Array.from(new Uint8Array(第二次哈希));
+  const 第二次十六进制 = 第二次哈希数组.map(字节 => 字节.toString(16).padStart(2, '0')).join('');
+
+  return 第二次十六进制.toLowerCase();
+}
+
+async function nginx() {
+  const text = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+    <title>Welcome to nginx!</title>
+    <style>
+        body {
+            width: 35em;
+            margin: 0 auto;
+            font-family: Tahoma, Verdana, Arial, sans-serif;
+        }
+    </style>
+    </head>
+    <body>
+    <h1>Welcome to nginx!</h1>
+    <p>If you see this page, the nginx web server is successfully installed and
+    working. Further configuration is required.</p>
+    
+    <p>For online documentation and support please refer to
+    <a href="http://nginx.org/">nginx.org</a>.<br/>
+    Commercial support is available at
+    <a href="http://nginx.com/">nginx.com</a>.</p>
+    
+    <p><em>Thank you for using nginx.</em></p>
+    </body>
+    </html>
+    `
+  return text;
 }
 
 async function HTML(hostname, 网站图标) {
@@ -1143,7 +1258,7 @@ curl "https://${hostname}/check?proxyip=1.2.3.4:443"
       }
       
       // 解析域名
-      const resolveResponse = await fetch(\`./resolve?domain=\${encodeURIComponent(cleanDomain)}\`);
+      const resolveResponse = await fetch(\`./resolve?domain=\${encodeURIComponent(cleanDomain)}&token=${临时TOKEN}\`);
       const resolveData = await resolveResponse.json();
       
       if (!resolveData.success) {
@@ -1277,7 +1392,7 @@ curl "https://${hostname}/check?proxyip=1.2.3.4:443"
     async function getIPInfo(ip) {
       try {
         const cleanIP = ip.replace(/[\\[\\]]/g, '');
-        const response = await fetch(\`./ip-info?ip=\${encodeURIComponent(cleanIP)}\`);
+        const response = await fetch(\`./ip-info?ip=\${encodeURIComponent(cleanIP)}&token=${临时TOKEN}\`);
         const data = await response.json();
         return data;
       } catch (error) {
