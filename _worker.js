@@ -4,11 +4,12 @@ export default {
   async fetch(request, env, ctx) {
     const 网站图标 = env.ICO || 'https://cf-assets.www.cloudflare.com/dzlvafdwdttg/19kSkLSfWtDcspvQI5pit4/c5630cf25d589a0de91978ca29486259/performance-acceleration-bolt.svg';
     const url = new URL(request.url);
+    const UA = request.headers.get('User-Agent') || 'null';
     const path = url.pathname;
     const hostname = url.hostname;
     const currentDate = new Date();
     const timestamp = Math.ceil(currentDate.getTime() / (1000 * 60 * 31)); // 每31分钟一个时间戳
-    临时TOKEN = await 双重哈希(url.hostname + timestamp);
+    临时TOKEN = await 双重哈希(url.hostname + timestamp + UA);
     永久TOKEN = env.TOKEN || 临时TOKEN;
 
     // 不区分大小写检查路径
