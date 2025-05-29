@@ -1046,6 +1046,19 @@ curl "https://${hostname}/check?proxyip=1.2.3.4:443"
         }
       }
       
+      // 如果没有从URL获取到值，尝试从localStorage获取上次搜索的地址
+      if (!autoCheckValue) {
+        try {
+          const lastSearch = localStorage.getItem('lastProxyIP');
+          if (lastSearch && isValidProxyIPFormat(lastSearch)) {
+            input.value = lastSearch;
+            // 不自动执行检测，只是填充输入框
+          }
+        } catch (error) {
+          console.log('读取历史记录失败:', error);
+        }
+      }
+      
       if (autoCheckValue) {
         input.value = autoCheckValue;
         // 如果来自URL参数，清除参数
@@ -1164,6 +1177,13 @@ curl "https://${hostname}/check?proxyip=1.2.3.4:443"
         showToast('请输入代理IP地址');
         proxyipInput.focus();
         return;
+      }
+      
+      // 保存到localStorage
+      try {
+        localStorage.setItem('lastProxyIP', proxyip);
+      } catch (error) {
+        console.log('保存历史记录失败:', error);
       }
       
       // 设置加载状态
