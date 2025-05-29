@@ -7,8 +7,7 @@ export default {
     const path = url.pathname;
     const hostname = url.hostname;
     const currentDate = new Date();
-    currentDate.setHours(0, 0, 0, 0);
-    const timestamp = Math.ceil(currentDate.getTime() / (1000 * 60 * 30)); // 每30分钟一个时间戳
+    const timestamp = Math.ceil(currentDate.getTime() / (1000 * 60 * 31)); // 每31分钟一个时间戳
     临时TOKEN = await 双重哈希(url.hostname + timestamp);
     永久TOKEN = env.TOKEN || 临时TOKEN;
 
@@ -999,6 +998,13 @@ curl "https://${hostname}/check?proxyip=1.2.3.4:443"
     // 全局变量
     let isChecking = false;
     const ipCheckResults = new Map(); // 缓存IP检查结果
+    let pageLoadTimestamp; // 页面加载时的时间戳
+    
+    // 计算时间戳的函数
+    function calculateTimestamp() {
+      const currentDate = new Date();
+      return Math.ceil(currentDate.getTime() / (1000 * 60 * 13)); // 每13分钟一个时间戳
+    }
     
     // 添加前端的代理IP格式验证函数
     function isValidProxyIPFormat(input) {
@@ -1021,6 +1027,10 @@ curl "https://${hostname}/check?proxyip=1.2.3.4:443"
     
     // 初始化
     document.addEventListener('DOMContentLoaded', function() {
+      // 记录页面加载时的时间戳
+      pageLoadTimestamp = calculateTimestamp();
+      console.log('页面加载完成，时间戳:', pageLoadTimestamp);
+      
       const input = document.getElementById('proxyip');
       input.focus();
       
@@ -1178,6 +1188,31 @@ curl "https://${hostname}/check?proxyip=1.2.3.4:443"
         proxyipInput.focus();
         return;
       }
+      
+      // 检查时间戳是否过期
+      const currentTimestamp = calculateTimestamp();
+      console.log('点击检测时的时间戳:', currentTimestamp);
+      console.log('页面加载时的时间戳:', pageLoadTimestamp);
+      console.log('时间戳是否一致:', currentTimestamp === pageLoadTimestamp);
+      
+      if (currentTimestamp !== pageLoadTimestamp) {
+        // 时间戳已过期，需要重新加载页面获取最新TOKEN
+        const currentHost = window.location.host;
+        const currentProtocol = window.location.protocol;
+        const redirectUrl = \`\${currentProtocol}//\${currentHost}/\${encodeURIComponent(proxyip)}\`;
+        
+        console.log('时间戳过期，即将跳转到:', redirectUrl);
+        showToast('TOKEN已过期，正在刷新页面...');
+        
+        // 延迟跳转，让用户看到提示
+        setTimeout(() => {
+          window.location.href = redirectUrl;
+        }, 1000);
+        
+        return;
+      }
+      
+      console.log('时间戳验证通过，继续执行检测逻辑');
       
       // 保存到localStorage
       try {
