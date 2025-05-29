@@ -1146,14 +1146,12 @@ curl "https://${hostname}/check?proxyip=1.2.3.4:443"
             <h3>✅ ProxyIP 有效</h3>
             <div style="margin-top: 20px;">
               <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px; flex-wrap: wrap;">
-                <strong>🌐 IP地址:</strong>
+                <strong>🌐 ProxyIP 地址:</strong>
                 \${createCopyButton(data.proxyIP)}
                 \${ipInfoHTML}
                 <span style="color: var(--success-color); font-weight: 600; font-size: 18px;">✅</span>
               </div>
               <p><strong>🔌 端口:</strong> \${createCopyButton(data.portRemote.toString())}</p>
-              <p><strong>📊 状态码:</strong> <span style="color: var(--success-color); font-weight: 600;">\${data.statusCode || 'N/A'}</span></p>
-              <p><strong>📏 响应大小:</strong> \${data.responseSize} bytes</p>
               <p><strong>🕒 检测时间:</strong> \${new Date(data.timestamp).toLocaleString()}</p>
             </div>
           </div>
@@ -1214,7 +1212,7 @@ curl "https://${hostname}/check?proxyip=1.2.3.4:443"
         <div class="result-card result-warning">
           <h3>🔍 域名解析结果</h3>
           <div style="margin-top: 20px;">
-            <p><strong>🌐 域名:</strong> \${createCopyButton(cleanDomain)}</p>
+            <p><strong>🌐 ProxyIP 域名:</strong> \${createCopyButton(cleanDomain)}</p>
             <p><strong>🔌 端口:</strong> \${createCopyButton(portRemote.toString())}</p>
             <p><strong>📋 发现IP:</strong> \${ips.length} 个</p>
             <p><strong>🕒 解析时间:</strong> \${new Date().toLocaleString()}</p>
