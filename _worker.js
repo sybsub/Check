@@ -2,6 +2,7 @@ import { connect } from "cloudflare:sockets";
 
 export default {
   async fetch(request, env, ctx) {
+    const 网站图标 = env.ICO || 'https://cf-assets.www.cloudflare.com/dzlvafdwdttg/19kSkLSfWtDcspvQI5pit4/c5630cf25d589a0de91978ca29486259/performance-acceleration-bolt.svg';
     const url = new URL(request.url);
     const path = url.pathname;
     const hostname = url.hostname;
@@ -108,21 +109,11 @@ export default {
           }
         });
       }
+    } else if (path.toLowerCase() === '/favicon.ico') {
+      return Response.redirect(网站图标, 302);
     } else {
-      if (path.startsWith('/') && path.length > 1) {
-        const pathContent = path.substring(1);
-
-        // 检查是否符合域名格式或IP格式
-        if (isValidProxyIPFormat(pathContent)) {
-          // 重定向到首页并传递proxyip参数
-          const redirectUrl = new URL(request.url);
-          redirectUrl.pathname = '/';
-          redirectUrl.searchParams.set('autocheck', pathContent);
-
-          return Response.redirect(redirectUrl.toString(), 302);
-        }
-      }
-      return await HTML(hostname);
+      // 直接返回HTML页面，路径解析交给前端处理
+      return await HTML(hostname, 网站图标);
     }
   }
 };
@@ -281,26 +272,7 @@ async function CheckProxyIP(proxyIP) {
   }
 }
 
-// 新增函数：检查是否为有效的ProxyIP格式
-function isValidProxyIPFormat(input) {
-  // 检查是否为域名格式
-  const domainRegex = /^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$/;
-  // 检查是否为IP格式
-  const ipv4Regex = /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
-  const ipv6Regex = /^\[?([0-9a-fA-F]{0,4}:){1,7}[0-9a-fA-F]{0,4}\]?$/;
-
-  // 允许带端口的格式
-  const withPortRegex = /^.+:\d+$/;
-  const tpPortRegex = /^.+\.tp\d+\./;
-
-  return domainRegex.test(input) ||
-    ipv4Regex.test(input) ||
-    ipv6Regex.test(input) ||
-    withPortRegex.test(input) ||
-    tpPortRegex.test(input);
-}
-
-async function HTML(hostname) {
+async function HTML(hostname, 网站图标) {
   // 首页 HTML
   const html = `<!DOCTYPE html>
 <html lang="zh-CN">
@@ -308,7 +280,7 @@ async function HTML(hostname) {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Check ProxyIP - 代理IP检测服务</title>
-  <link rel="icon" href="https://cf-assets.www.cloudflare.com/dzlvafdwdttg/19kSkLSfWtDcspvQI5pit4/c5630cf25d589a0de91978ca29486259/performance-acceleration-bolt.svg" type="image/x-icon">
+  <link rel="icon" href="${网站图标}" type="image/x-icon">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -962,21 +934,60 @@ curl "https://${hostname}/check?proxyip=1.2.3.4:443"
     let isChecking = false;
     const ipCheckResults = new Map(); // 缓存IP检查结果
     
+    // 添加前端的代理IP格式验证函数
+    function isValidProxyIPFormat(input) {
+      // 检查是否为域名格式
+      const domainRegex = /^[a-zA-Z0-9]([a-zA-Z0-9\\-]{0,61}[a-zA-Z0-9])?(\\.[a-zA-Z0-9]([a-zA-Z0-9\\-]{0,61}[a-zA-Z0-9])?)*$/;
+      // 检查是否为IP格式
+      const ipv4Regex = /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
+      const ipv6Regex = /^\\[?([0-9a-fA-F]{0,4}:){1,7}[0-9a-fA-F]{0,4}\\]?$/;
+
+      // 允许带端口的格式
+      const withPortRegex = /^.+:\\d+$/;
+      const tpPortRegex = /^.+\\.tp\\d+\\./;
+
+      return domainRegex.test(input) ||
+        ipv4Regex.test(input) ||
+        ipv6Regex.test(input) ||
+        withPortRegex.test(input) ||
+        tpPortRegex.test(input);
+    }
+    
     // 初始化
     document.addEventListener('DOMContentLoaded', function() {
       const input = document.getElementById('proxyip');
       input.focus();
       
-      // 检查URL参数，如果有autocheck参数则自动填写并搜索
+      // 直接解析当前URL路径
+      const currentPath = window.location.pathname;
+      let autoCheckValue = null;
+      
+      // 检查URL参数中的autocheck（保持兼容性）
       const urlParams = new URLSearchParams(window.location.search);
-      const autoCheckValue = urlParams.get('autocheck');
+      autoCheckValue = urlParams.get('autocheck');
+      
+      // 如果没有autocheck参数，检查路径
+      if (!autoCheckValue && currentPath.length > 1) {
+        const pathContent = currentPath.substring(1); // 移除开头的 '/'
+        
+        // 检查路径是否为有效的代理IP格式
+        if (isValidProxyIPFormat(pathContent)) {
+          autoCheckValue = pathContent;
+          // 清理URL，移除路径部分
+          const newUrl = new URL(window.location);
+          newUrl.pathname = '/';
+          window.history.replaceState({}, '', newUrl);
+        }
+      }
       
       if (autoCheckValue) {
         input.value = autoCheckValue;
-        // 清除URL参数，避免重复触发
-        const newUrl = new URL(window.location);
-        newUrl.searchParams.delete('autocheck');
-        window.history.replaceState({}, '', newUrl);
+        // 如果来自URL参数，清除参数
+        if (urlParams.has('autocheck')) {
+          const newUrl = new URL(window.location);
+          newUrl.searchParams.delete('autocheck');
+          window.history.replaceState({}, '', newUrl);
+        }
         
         // 延迟执行搜索，确保页面完全加载
         setTimeout(() => {
@@ -1048,6 +1059,22 @@ curl "https://${hostname}/check?proxyip=1.2.3.4:443"
       return ipv4Regex.test(input) || ipv6Regex.test(input) || ipv6WithPortRegex.test(input) || ipv4WithPortRegex.test(input);
     }
     
+    // 添加输入预处理函数
+    function preprocessInput(input) {
+      if (!input) return input;
+      
+      // 去除首尾空格
+      let processed = input.trim();
+      
+      // 检查是否还有空格
+      if (processed.includes(' ')) {
+        // 只保留第一个空格前的内容
+        processed = processed.split(' ')[0];
+      }
+      
+      return processed;
+    }
+    
     // 主检测函数
     async function checkProxyIP() {
       if (isChecking) return;
@@ -1058,7 +1085,15 @@ curl "https://${hostname}/check?proxyip=1.2.3.4:443"
       const btnText = checkBtn.querySelector('.btn-text');
       const spinner = checkBtn.querySelector('.loading-spinner');
       
-      const proxyip = proxyipInput.value.trim();
+      const rawInput = proxyipInput.value;
+      const proxyip = preprocessInput(rawInput);
+      
+      // 如果预处理后的值与原值不同，更新输入框
+      if (proxyip !== rawInput) {
+        proxyipInput.value = proxyip;
+        showToast('已自动清理输入内容');
+      }
+      
       if (!proxyip) {
         showToast('请输入代理IP地址');
         proxyipInput.focus();
