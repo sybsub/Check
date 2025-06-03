@@ -19,6 +19,43 @@ CF-Workers-CheckProxyIP 是一个部署在 Cloudflare Workers 上的轻量级 Pr
 - ⚡ **实时结果**：秒级响应，即时获取检测结果
 - 🔒 **安全可靠**：无需存储用户数据，保护隐私安全
 
+## 🤔 什么是 ProxyIP ？
+
+### 📖 ProxyIP 概念
+
+在 Cloudflare Workers 环境中，ProxyIP 特指那些能够成功代理连接到 Cloudflare 服务的第三方 IP 地址。
+
+### 🔧 技术原理
+
+根据 Cloudflare Workers 的 [TCP Sockets 官方文档](https://developers.cloudflare.com/workers/runtime-apis/tcp-sockets/) 说明，存在以下技术限制：
+
+> ⚠️ **重要限制**  
+> Outbound TCP sockets to [Cloudflare IP ranges](https://www.cloudflare.com/ips/) are temporarily blocked, but will be re-enabled shortly.
+
+这意味着 Cloudflare Workers 无法直接连接到 Cloudflare 自有的 IP 地址段。为了解决这个限制，需要借助第三方云服务商的服务器作为"跳板"：
+
+```
+Cloudflare Workers → ProxyIP 服务器 → Cloudflare 服务
+    (发起请求)      (第三方代理)      (目标服务)
+```
+
+通过第三方服务器反向代理 Cloudflare 的 443 端口，实现 Workers 对 Cloudflare 服务的访问。
+
+### 🎯 实际应用场景
+
+> **由于上述限制**，[**edgetunnel**](https://github.com/cmliu/edgetunnel)、[**epeius**](https://github.com/cmliu/epeius) 等项目，在尝试访问使用 Cloudflare CDN 服务的网站时，会因为无法建立到 Cloudflare IP 段的连接而导致访问失败。
+> 
+> **解决方案：** 通过配置有效的 ProxyIP，这些项目可以绕过限制，成功访问托管在 Cloudflare 上的目标网站，确保服务的正常运行。
+
+### ✅ 有效 ProxyIP特征
+
+一个有效的 ProxyIP 必须具备以下特征：
+
+- **网络连通性：** 能够成功建立到指定端口（通常为 443）的 TCP 连接
+- **代理功能：** 具备反向代理 Cloudflare IP 段的 HTTPS 服务能力
+
+> 💡 **提示：** 本检测服务通过模拟真实的网络连接来验证 ProxyIP 的可用性，帮助您快速识别和筛选出稳定可靠的代理服务器。
+
 ## 🚀 部署方式
 
 - **Workers** 部署：复制 [_worker.js](https://github.com/cmliu/CF-Workers-CheckProxyIP/blob/main/_worker.js) 代码，保存并部署即可
