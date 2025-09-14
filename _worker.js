@@ -238,19 +238,101 @@ async function CheckProxyIP(proxyIP, colo = 'CF') {
     proxyIP = proxyIP.split(':')[0];
   }
 
+  const tcpSocket = connect({
+    hostname: proxyIP,
+    port: portRemote,
+  });
+
   try {
-    const tls握手 = await 验证反代IP(proxyIP, portRemote);
-    // 构建JSON响应
-    const jsonResponse = {
-      success: tls握手[0],
-      proxyIP: proxyIP,
-      portRemote: portRemote,
-      colo: colo,
-      responseTime: tls握手[2] ? tls握手[2] : -1,
-      message: tls握手[1],
-      timestamp: new Date().toISOString(),
-    };
-    return jsonResponse;
+    // 构建HTTP GET请求
+    const httpRequest =
+      "GET /cdn-cgi/trace HTTP/1.1\r\n" +
+      "Host: speed.cloudflare.com\r\n" +
+      "User-Agent: CheckProxyIP/cmliu\r\n" +
+      "Connection: close\r\n\r\n";
+
+    // 发送HTTP请求
+    const writer = tcpSocket.writable.getWriter();
+    await writer.write(new TextEncoder().encode(httpRequest));
+    writer.releaseLock();
+
+    // 读取HTTP响应
+    const reader = tcpSocket.readable.getReader();
+    let responseData = new Uint8Array(0);
+    let receivedData = false;
+
+    // 读取所有可用数据
+    while (true) {
+      const { value, done } = await Promise.race([
+        reader.read(),
+        new Promise(resolve => setTimeout(() => resolve({ done: true }), 5000)) // 5秒超时
+      ]);
+
+      if (done) break;
+      if (value) {
+        receivedData = true;
+        // 合并数据
+        const newData = new Uint8Array(responseData.length + value.length);
+        newData.set(responseData);
+        newData.set(value, responseData.length);
+        responseData = newData;
+
+        // 检查是否接收到完整响应
+        const responseText = new TextDecoder().decode(responseData);
+        if (responseText.includes("\r\n\r\n") &&
+          (responseText.includes("Connection: close") || responseText.includes("content-length"))) {
+          break;
+        }
+      }
+    }
+    reader.releaseLock();
+
+    // 解析HTTP响应
+    const responseText = new TextDecoder().decode(responseData);
+    const statusMatch = responseText.match(/^HTTP\/\d\.\d\s+(\d+)/i);
+    const statusCode = statusMatch ? parseInt(statusMatch[1]) : null;
+
+    // 判断是否成功
+    function isValidProxyResponse(responseText, responseData) {
+      const statusMatch = responseText.match(/^HTTP\/\d\.\d\s+(\d+)/i);
+      const statusCode = statusMatch ? parseInt(statusMatch[1]) : null;
+      const looksLikeCloudflare = responseText.includes("cloudflare") && responseText.includes("CF-RAY");
+      const isExpectedError = responseText.includes("The plain HTTP request was sent to HTTPS port") && responseText.includes("400 Bad Request");
+      const hasBody = responseData.length > 100;
+
+      return statusCode !== null && looksLikeCloudflare && isExpectedError && hasBody;
+    }
+    // 关闭连接
+    await tcpSocket.close();
+
+    const isSuccessful = isValidProxyResponse(responseText, responseData);
+    if (isSuccessful) {
+      console.log(`成功通过ProxyIP ${proxyIP}:${portRemote} 连接到Cloudflare，状态码: ${statusCode} 响应内容: ${responseText}`);
+      const tls握手 = await 验证反代IP(proxyIP, portRemote);
+
+      // 构建JSON响应
+      const jsonResponse = {
+        success: tls握手[0],
+        proxyIP: proxyIP,
+        portRemote: portRemote,
+        colo: colo,
+        responseTime: tls握手[2] ? tls握手[2] : -1,
+        message: tls握手[1],
+        timestamp: new Date().toISOString(),
+      };
+      return jsonResponse;
+    } else {
+      console.log(`无法通过ProxyIP ${proxyIP}:${portRemote} 访问Cloudflare，状态码: ${statusCode} 响应内容: ${responseText}`);
+      return {
+        success: false,
+        proxyIP: proxyIP,
+        portRemote: portRemote,
+        colo: colo,
+        responseTime: -1,
+        message: "无法通过ProxyIP访问Cloudflare",
+        timestamp: new Date().toISOString()
+      };
+    }
   } catch (error) {
     // 连接失败，返回失败的JSON
     return {
