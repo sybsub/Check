@@ -9,7 +9,7 @@
 
 ## 🙏 致谢
 - [cmliu](https://github.com/cmliu) - cm大佬
-- [copilot](https://copilot.microsoft.com/)) - 微软copilot
+- [copilot](https://copilot.microsoft.com/) - 微软copilot
 - [@houyiTFG](https://t.me/houyiTFG) - 天书作者
 - [Cloudflare Workers](https://workers.cloudflare.com/) - 提供强大的边缘计算平台
 - 所有贡献者和使用者的支持
