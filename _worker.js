@@ -1,6 +1,3 @@
-// 完整 Worker（已将 CheckProxyIP 更新为返回精确 responseTime）
-// 直接复制到 Cloudflare Worker 并部署
-
 import { connect } from 'cloudflare:sockets';
 
 let 临时TOKEN, 永久TOKEN;
@@ -752,7 +749,6 @@ export default {
       return new Response(page, { headers: { 'Content-Type':'text/html;charset=UTF-8' } });
     }
 
-    
     // 如果有永久 TOKEN，则返回简短提示页面（不暴露 UI）
     return new Response('<!doctype html><html><body><h3>Service running. Use /check endpoint.</h3></body></html>', { headers: { 'Content-Type':'text/html;charset=UTF-8' } });
   }
