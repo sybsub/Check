@@ -481,7 +481,7 @@ export default {
       try {
         if (type === 'socks5') {
           const proxy = url.searchParams.get('socks5') || url.searchParams.get('proxy');
-          if (!proxy) return new Response(JSON.stringify({ success:false, error:'missing socks5 parameter'}), { status:400, headers:{'Content-Type':'application/json'}});
+          if (!proxy) return new Response(JSON.stringify({ success:false, error:'missing socks5 parameter'}), { status:400, headers:{'Content-Type':'application/json'} });
           parsedSocks5Address = socks5AddressParser(proxy);
           const trace = await checkSocks5Proxy('check.socks5.090227.xyz', 80, '/cdn-cgi/trace');
           const m = trace.match(/ip=([^\r\n]+)/);
@@ -491,7 +491,7 @@ export default {
           return new Response(JSON.stringify({ success:true, proxy:'socks5://'+proxy, ...info }, null,2), { headers:{'Content-Type':'application/json'} });
         } else if (type === 'http') {
           const proxy = url.searchParams.get('http') || url.searchParams.get('proxy');
-          if (!proxy) return new Response(JSON.stringify({ success:false, error:'missing http parameter'}), { status:400, headers:{'Content-Type':'application/json'}});
+          if (!proxy) return new Response(JSON.stringify({ success:false, error:'missing http parameter'}), { status:400, headers:{'Content-Type':'application/json'} });
           parsedSocks5Address = socks5AddressParser(proxy);
           const trace = await checkHttpProxy('check.socks5.090227.xyz', 80, '/cdn-cgi/trace');
           const m = trace.match(/ip=([^\r\n]+)/);
@@ -514,12 +514,12 @@ export default {
             if (answers && answers.length) ipv6 = answers[0]; else throw new Error('DNS64 查询失败或未返回 AAAA');
           }
           const traceResult = await fetchCdnCgiTrace(ipv6);
-          if (!traceResult.success) return new Response(JSON.stringify({ success:false, nat64_ipv6:ipv6, error:traceResult.error }, null,2), { status:500, headers:{'Content-Type':'application/json'}});
+          if (!traceResult.success) return new Response(JSON.stringify({ success:false, nat64_ipv6:ipv6, error:traceResult.error }, null,2), { status:500, headers:{'Content-Type':'application/json'} });
           const parsed = parseCdnCgiTrace(traceResult.data);
           return new Response(JSON.stringify({ success:true, nat64_ipv6:ipv6, trace_data:parsed, timestamp:new Date().toISOString() }, null,2), { headers:{'Content-Type':'application/json'} });
         } else if (type === 'proxyip') {
           const proxyip = url.searchParams.get('proxyip');
-          if (!proxyip) return new Response(JSON.stringify({ success:false, error:'missing proxyip parameter'}), { status:400, headers:{'Content-Type':'application/json'}});
+          if (!proxyip) return new Response(JSON.stringify({ success:false, error:'missing proxyip parameter'}), { status:400, headers:{'Content-Type':'application/json'} });
           if (env.TOKEN) { if (!url.searchParams.has('token') || url.searchParams.get('token') !== 永久TOKEN) return new Response(JSON.stringify({ status:"error", message:"ProxyIP 查询失败: 无效的TOKEN", timestamp:new Date().toISOString() }, null,2), { status:403, headers:{'Content-Type':'application/json'} }); }
           const colo = request.cf?.colo || 'CF';
           const res = await CheckProxyIP(proxyip, colo);
@@ -554,98 +554,205 @@ export default {
     // 简洁前端页面（当无永久 TOKEN 时）
     if (!env.TOKEN) {
       const page = `<!doctype html>
-<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>联合检测</title>
-<style>
-body{font-family:Arial,Helvetica,sans-serif;background:#f4f7fb;margin:0;padding:20px;color:#222}
-.container{max-width:900px;margin:0 auto;background:#fff;padding:18px;border-radius:10px;box-shadow:0 8px 30px rgba(0,0,0,0.06)}
-h1{margin:0 0 10px;font-size:20px}
-.panel{margin-top:12px}
-.row{display:flex;gap:8px;flex-wrap:wrap}
-.input{flex:1;padding:10px;border:1px solid #ddd;border-radius:8px}
-.btn{padding:10px 14px;border-radius:8px;border:0;background:#2f80ed;color:#fff;cursor:pointer}
-.result{white-space:pre-wrap;background:#f7f9fc;border:1px solid #eee;padding:12px;border-radius:8px;margin-top:12px}
-</style></head><body>
-<div class="container">
-  <h1>联合检测（SOCKS5/HTTP/NAT64/ProxyIP）</h1>
-  <div class="panel"><label>类型
-    <select id="mode" class="input"><option value="socks5">SOCKS5</option><option value="http">HTTP</option><option value="nat64">NAT64</option><option value="proxyip">ProxyIP</option></select>
-  </label></div>
-  <div class="panel" id="formArea">
-    <div class="row">
-      <input id="input1" class="input" placeholder="socks5://user:pass@host:port 或 host:port 或 nat64 server 或 proxyip">
-      <input id="input2" class="input" placeholder="(NAT64 时为要解析的 host, 例如 cf.hw.090227.xyz)">
-      <button id="run" class="btn">开始检测</button>
-    </div>
-    <div class="result" id="result">等待检测...</div>
-  </div>
-</div>
-<script>
-// 替换当前页面脚本 => 仅展示相关输入框
-(function(){
-  const modeEl = document.getElementById('mode');
-  const i1 = document.getElementById('input1');
-  const i2 = document.getElementById('input2');
-  const run = document.getElementById('run');
-  const res = document.getElementById('result');
-
-  function updateUI() {
-    if (modeEl.value === 'nat64') {
-      i2.style.display = 'inline-block';
-      i2.placeholder = '(NAT64 时填写要解析的 host，例如 cf.hw.090227.xyz)';
-    } else {
-      i2.style.display = 'none';
-      i2.value = '';
-    }
-    // 调整第一个输入框 placeholder 更语义化
-    if (modeEl.value === 'proxyip') i1.placeholder = 'ProxyIP 示例：1.2.3.4:443 或 domain:port';
-    else if (modeEl.value === 'socks5') i1.placeholder = 'socks5://user:pass@host:port 或 host:port';
-    else if (modeEl.value === 'http') i1.placeholder = 'http://user:pass@host:port 或 host:port';
-    else if (modeEl.value === 'nat64') i1.placeholder = 'DNS64 server 或 NAT64 前缀，例如 2001:.../96';
-  }
-
-  modeEl.addEventListener('change', updateUI);
-  updateUI(); // 初始化
-
-  run.addEventListener('click', async ()=>{
-    const mode = modeEl.value;
-    res.textContent = '检测中...';
-    try {
-      if (mode === 'socks5') {
-        const v = i1.value.trim();
-        if (!v) { alert('请输入 SOCKS5 代理'); return; }
-        const r = await fetch('/check?type=socks5&socks5=' + encodeURIComponent(v));
-        res.textContent = JSON.stringify(await r.json(), null, 2);
-      } else if (mode === 'http') {
-        const v = i1.value.trim();
-        if (!v) { alert('请输入 HTTP 代理'); return; }
-        const r = await fetch('/check?type=http&http=' + encodeURIComponent(v));
-        res.textContent = JSON.stringify(await r.json(), null, 2);
-      } else if (mode === 'nat64') {
-        const server = i1.value.trim();
-        const host = i2.value.trim() || 'cf.hw.090227.xyz';
-        const q = server ? ('?nat64=' + encodeURIComponent(server) + '&host=' + encodeURIComponent(host)) : ('?host=' + encodeURIComponent(host));
-        const r = await fetch('/check?type=nat64' + q);
-        res.textContent = JSON.stringify(await r.json(), null, 2);
-      } else if (mode === 'proxyip') {
-        const v = i1.value.trim();
-        if (!v) { alert('请输入 ProxyIP'); return; }
-        const r = await fetch('/check?type=proxyip&proxyip=' + encodeURIComponent(v));
-        res.textContent = JSON.stringify(await r.json(), null, 2);
+      <html lang="zh-CN">
+      <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+      <title>联合检测 — SOCKS5 / HTTP / NAT64 / ProxyIP</title>
+      <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+      <style>
+      :root{
+        --bg1: linear-gradient(135deg,#667eea 0%,#764ba2 100%);
+        --muted:#6c757d;
+        --accent:#2f80ed;
+        --max-width:960px;
       }
-    } catch (e) {
-      res.textContent = '请求失败: ' + (e.message || String(e));
-    }
-  });
+      
+      /* 布局基础：允许页面整体滚动 */
+      *{box-sizing:border-box;margin:0;padding:0}
+      html,body{height:100%}
+      body{
+        font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans SC","PingFang SC","Microsoft YaHei",Arial;
+        background:var(--bg1);
+        color:#222;
+        -webkit-font-smoothing:antialiased;
+        -moz-osx-font-smoothing:grayscale;
+        display:flex;
+        align-items:flex-start;
+        justify-content:center;
+        padding:28px;
+        overflow:auto; /* 允许页面整体滚动 */
+      }
+      
+      /* 居中容器 */
+      .container{
+        width:100%;
+        max-width:var(--max-width);
+        margin:0 auto;
+        display:flex;
+        flex-direction:column;
+        gap:14px;
+      }
+      
+      /* 标题与卡片 */
+      .card{background:rgba(255,255,255,0.98);border-radius:12px;padding:16px;box-shadow:0 8px 30px rgba(10,10,10,0.06)}
+      .header{display:flex;align-items:center;justify-content:space-between}
+      .title h1{font-size:22px;color:#fff}
+      .title p{color:rgba(255,255,255,0.92);font-size:13px}
+      
+      /* 表单行 */
+      .form-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+      .select{min-width:140px;padding:10px 12px;border-radius:10px;border:1px solid rgba(0,0,0,0.08);background:#fff;font-size:13px;height:44px}
+      .input{flex:1;min-width:220px;padding:12px 14px;border-radius:10px;border:1px solid #e6e9ee;background:#fff;color:#222;height:44px}
+      .input.small-input{max-width:280px}
+      .btn{background:linear-gradient(135deg,var(--accent),#1866d6);border:0;color:#fff;font-weight:600;cursor:pointer;padding:12px 16px;border-radius:10px;height:44px;white-space:nowrap}
+      
+      /* 输出区：不内部滚动，随内容自然撑高；页面整体滚动查看 */
+      .output-wrapper{display:flex;flex-direction:column;gap:8px;min-height:120px;max-width:100%}
+      .output-card{display:flex;flex-direction:column;border-radius:10px;border:1px solid #e9e9ee;background:#fbfbfb;overflow:visible}
+      .output-header{padding:10px 12px;color:var(--muted);font-size:13px;border-bottom:1px solid #f0f0f3;background:linear-gradient(180deg,rgba(255,255,255,0.6),rgba(255,255,255,0))}
+      /* 关键：让 pre 不产生内部滚动而是自然展开 */
+      #outputText{
+        padding:12px;
+        margin:0;
+        font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,"Roboto Mono","Noto Sans Mono";
+        font-size:13px;
+        line-height:1.45;
+        color:#111;
+        overflow:visible;       /* 不在 pre 内部滚动 */
+        white-space:pre-wrap;
+        word-break:break-word;
+      }
+      
+      /* 页脚 */
+      .footer{text-align:center;color:rgba(255,255,255,0.9);font-size:13px;padding-top:4px}
+      
+      /* 响应式 */
+      @media(max-width:720px){
+        .form-row{flex-direction:column;align-items:stretch}
+        .select{width:100%}
+        .btn{width:100%}
+      }
+      </style>
+      </head>
+      <body>
+      <div class="container" role="main">
+        <header class="header">
+          <div class="title">
+            <h1>联合检测</h1>
+            <p>支持 SOCKS5 / HTTP / NAT64 / ProxyIP 的快速检测与信息展示</p>
+          </div>
+        </header>
+      
+        <main>
+          <section class="card" aria-labelledby="panelTitle">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+              <div id="panelTitle" style="font-size:13px;color:var(--muted)">检测面板</div>
+              <div style="font-size:13px;color:var(--muted)">页面会调用本 Worker 的 /check /resolve /ip-info 接口完成检测</div>
+            </div>
+      
+            <div id="formArea">
+              <div class="form-row">
+                <select id="modeSelect" class="select" aria-label="选择检测类型" title="检测类型">
+                  <option value="socks5">SOCKS5</option>
+                  <option value="http">HTTP</option>
+                  <option value="nat64">NAT64</option>
+                  <option value="proxyip">ProxyIP</option>
+                </select>
+      
+                <input id="inputMain" class="input" placeholder="例如：socks5://user:pass@host:port 或 1.2.3.4:443 或 domain:port" aria-label="检测地址">
+                <input id="inputSecondary" class="input small-input" placeholder="NAT64 时填写要解析的 host（例如 cf.hw.090227.xyz）" style="display:none" aria-label="NAT64 host">
+                <button id="runBtn" class="btn">开始检测</button>
+              </div>
+      
+              <div class="output-wrapper" id="outputWrapper" aria-live="polite">
+                <div class="output-card">
+                  <div class="output-header">
+                    <div style="display:flex;justify-content:space-between;align-items:center;">
+                      <div style="font-size:13px;color:var(--muted)">检测输出</div>
+                      <div style="font-size:12px;color:var(--muted)">JSON / 文本结果（完整展开）</div>
+                    </div>
+                  </div>
+      
+                  <pre id="outputText" role="region" aria-label="检测输出">等待检测...</pre>
+                </div>
+              </div>
+      
+            </div>
+          </section>
+        </main>
+      
+        <div class="footer">© 2025 联合检测 — 基于 Cloudflare Workers，前端调用 /check /resolve /ip-info 接口完成检测</div>
+      </div>
+      
+      <script>
+      (function(){
+        const modeSelect = document.getElementById('modeSelect');
+        const inputMain = document.getElementById('inputMain');
+        const inputSecondary = document.getElementById('inputSecondary');
+        const runBtn = document.getElementById('runBtn');
+        const outputText = document.getElementById('outputText');
+      
+        function updateUI(){
+          const mode = modeSelect.value;
+          inputSecondary.style.display = mode === 'nat64' ? 'inline-block' : 'none';
+          if(mode==='proxyip') inputMain.placeholder='ProxyIP 例：1.2.3.4:443 或 domain:port';
+          else if(mode==='socks5') inputMain.placeholder='socks5://user:pass@host:port 或 host:port';
+          else if(mode==='http') inputMain.placeholder='http://user:pass@host:port 或 host:port';
+        }
+        modeSelect.addEventListener('change', updateUI);
+        updateUI();
+      
+        function showOutput(text){
+          // 将完整文本写入 pre，pre 不滚动而是撑高页面
+          outputText.textContent = text;
+          // 小延迟确保布局更新，然后让页面滚到顶部以便看到输入区（按需求可移除）
+          requestAnimationFrame(()=> {
+            // 把页面滚动到顶部，保持“联合检测”输入区可见（若不需要，删除下一行）
+            // window.scrollTo({ top: 0, behavior: 'smooth' });
+          });
+        }
+      
+        async function callCheck(params){
+          showOutput('检测中...');
+          try {
+            const res = await fetch('/check' + params);
+            const j = await res.json();
+            showOutput(JSON.stringify(j, null, 2));
+          } catch(err){
+            showOutput('请求失败: ' + (err.message || err));
+          }
+        }
+      
+        runBtn.addEventListener('click', ()=>{
+          const mode = modeSelect.value;
+          const v = inputMain.value.trim();
+          if(mode === 'nat64'){
+            const server = inputMain.value.trim();
+            const host = inputSecondary.value.trim() || 'cf.hw.090227.xyz';
+            const q = server ? ('?type=nat64&nat64=' + encodeURIComponent(server) + '&host=' + encodeURIComponent(host)) : ('?type=nat64&host=' + encodeURIComponent(host));
+            callCheck(q);
+            return;
+          }
+          if(!v){ alert('请输入检测目标'); return; }
+          if(mode === 'socks5') callCheck('?type=socks5&socks5=' + encodeURIComponent(v));
+          else if(mode === 'http') callCheck('?type=http&http=' + encodeURIComponent(v));
+          else if(mode === 'proxyip') callCheck('?type=proxyip&proxyip=' + encodeURIComponent(v));
+        });
+      
+        inputMain.addEventListener('keypress', (e)=>{ if(e.key==='Enter') runBtn.click(); });
+        inputSecondary.addEventListener('keypress', (e)=>{ if(e.key==='Enter') runBtn.click(); });
+      
+        // 可选：当窗口大小变化时无须额外处理，页面自然重新流式布局
+      })();
+      </script>
+      </body>
+      </html>`;
 
-  // 回车触发
-  i1.addEventListener('keyup', (e)=>{ if (e.key === 'Enter') run.click(); });
-  i2.addEventListener('keyup', (e)=>{ if (e.key === 'Enter') run.click(); });
-})();
-
-</script></body></html>`;
       return new Response(page, { headers: { 'Content-Type':'text/html;charset=UTF-8' } });
     }
 
+    
     // 如果有永久 TOKEN，则返回简短提示页面（不暴露 UI）
     return new Response('<!doctype html><html><body><h3>Service running. Use /check endpoint.</h3></body></html>', { headers: { 'Content-Type':'text/html;charset=UTF-8' } });
   }
