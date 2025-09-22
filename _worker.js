@@ -515,8 +515,11 @@ export default {
           const parsed = parseCdnCgiTrace(traceResult.data);
           return new Response(JSON.stringify({ success:true, nat64_ipv6:ipv6, trace_data:parsed, timestamp:new Date().toISOString() }, null,2), { headers:{'Content-Type':'application/json'} });
         } else if (type === 'proxyip') {
-          const proxyip = url.searchParams.get('proxyip');
-          if (!proxyip) return new Response(JSON.stringify({ success:false, error:'missing proxyip parameter'}), { status:400, headers:{'Content-Type':'application/json'} });
+          // 支持多种格式：1.2.3.4:443  或 1.1.1.1,443  或 domain:port  或 [ipv6]:port
+          let proxyipRaw = url.searchParams.get('proxyip');
+          if (!proxyipRaw) return new Response(JSON.stringify({ success:false, error:'missing proxyip parameter'}), { status:400, headers:{'Content-Type':'application/json'} });
+          // 允许用户用逗号分隔 ip,port 的写法（例如 1.1.1.1,443），把逗号替换为冒号并移除多余空格
+          const proxyip = proxyipRaw.replace(/\s*,\s*/g, ':').trim();
           if (env.TOKEN) { if (!url.searchParams.has('token') || url.searchParams.get('token') !== 永久TOKEN) return new Response(JSON.stringify({ status:"error", message:"ProxyIP 查询失败: 无效的TOKEN", timestamp:new Date().toISOString() }, null,2), { status:403, headers:{'Content-Type':'application/json'} }); }
           const colo = request.cf?.colo || 'CF';
           const res = await CheckProxyIP(proxyip, colo);
@@ -620,7 +623,19 @@ export default {
         white-space:pre-wrap;
         word-break:break-word;
       }
-      
+
+      /* 简单模态窗口样式 */
+      .modal-backdrop{
+        position:fixed;inset:0;background:rgba(0,0,0,0.45);display:none;align-items:center;justify-content:center;z-index:9999;
+      }
+      .modal{
+        background:#fff;padding:18px;border-radius:10px;max-width:520px;width:92%;box-shadow:0 10px 30px rgba(0,0,0,0.25);color:#111;
+      }
+      .modal .modal-title{font-weight:600;margin-bottom:8px}
+      .modal .modal-body{color:#444;margin-bottom:14px;white-space:pre-wrap}
+      .modal .modal-actions{text-align:right}
+      .modal .modal-btn{background:linear-gradient(135deg,var(--accent),#1866d6);color:#fff;border:0;padding:10px 14px;border-radius:8px;cursor:pointer}
+
       /* 页脚 */
       .footer{text-align:center;color:rgba(255,255,255,0.9);font-size:13px;padding-top:4px}
       
@@ -667,7 +682,6 @@ export default {
                   <div class="output-header">
                     <div style="display:flex;justify-content:space-between;align-items:center;">
                       <div style="font-size:13px;color:var(--muted)">检测输出</div>
-                      <div style="font-size:12px;color:var(--muted)">JSON / 文本结果（完整展开）</div>
                     </div>
                   </div>
       
@@ -681,7 +695,18 @@ export default {
       
         <div class="footer">© 2025 联合检测 — 基于 Cloudflare Workers，前端调用 /check /resolve /ip-info 接口完成检测</div>
       </div>
-      
+
+      <!-- 模态结构（用于 token 过期提示，只有一个确定按钮） -->
+      <div id="modalBackdrop" class="modal-backdrop" role="dialog" aria-modal="true" style="display:none">
+        <div class="modal" role="document" aria-labelledby="modalTitle">
+          <div class="modal-title" id="modalTitle">检测失败</div>
+          <div class="modal-body" id="modalBody">TOKEN 无效或已过期，请点击确定刷新界面以继续操作。</div>
+          <div class="modal-actions">
+            <button id="modalOk" class="modal-btn">确定</button>
+          </div>
+        </div>
+      </div>
+
       <script>
       (function(){
         const modeSelect = document.getElementById('modeSelect');
@@ -689,41 +714,151 @@ export default {
         const inputSecondary = document.getElementById('inputSecondary');
         const runBtn = document.getElementById('runBtn');
         const outputText = document.getElementById('outputText');
-      
+        const modalBackdrop = document.getElementById('modalBackdrop');
+        const modalBody = document.getElementById('modalBody');
+        const modalOk = document.getElementById('modalOk');
+
+        // sessionStorage 键名
+        const SS_KEY = 'joint-check-state-v1';
+
+        // 恢复表单状态（选择项与输入框），但不恢复输出
+        function restoreState() {
+          try {
+            const raw = sessionStorage.getItem(SS_KEY);
+            if (!raw) return;
+            const s = JSON.parse(raw);
+            if (s.mode) modeSelect.value = s.mode;
+            if (typeof s.inputMain === 'string') inputMain.value = s.inputMain;
+            if (typeof s.inputSecondary === 'string') inputSecondary.value = s.inputSecondary;
+            updateUI();
+          } catch (e) {
+            // 忽略解析错误
+          }
+        }
+
+        // 保存当前表单（不保存输出）
+        function saveState() {
+          try {
+            const s = {
+              mode: modeSelect.value,
+              inputMain: inputMain.value,
+              inputSecondary: inputSecondary.value
+            };
+            sessionStorage.setItem(SS_KEY, JSON.stringify(s));
+          } catch (e) {}
+        }
+
+        // 当页面刷新后需要清空输出区
+        function clearOutput() {
+          outputText.textContent = '';
+        }
+
         function updateUI(){
           const mode = modeSelect.value;
           inputSecondary.style.display = mode === 'nat64' ? 'inline-block' : 'none';
-          if(mode==='proxyip') inputMain.placeholder='ProxyIP 例：1.2.3.4:443 或 domain:port';
-          else if(mode==='socks5') inputMain.placeholder='socks5://user:pass@host:port 或 host:port';
-          else if(mode==='http') inputMain.placeholder='http://user:pass@host:port 或 host:port';
+
+          if (mode === 'nat64') {
+            inputMain.placeholder = '[2001:67c:2960:6464::/96]:443';
+            inputSecondary.placeholder = 'Nat64时填写要解析的host';
+          } else if(mode === 'proxyip') {
+            inputMain.placeholder = 'ProxyIP 例：1.2.3.4:443 或 1.1.1.1,443 或 domain:port';
+            inputSecondary.placeholder = '';
+          } else if(mode === 'socks5') {
+            inputMain.placeholder = 'socks5://user:pass@host:port 或 host:port';
+            inputSecondary.placeholder = '';
+          } else if(mode === 'http') {
+            inputMain.placeholder = 'http://user:pass@host:port 或 host:port';
+            inputSecondary.placeholder = '';
+          }
+          // 保存选择/输入的状态
+          saveState();
         }
+
         modeSelect.addEventListener('change', updateUI);
-        updateUI();
-      
+
+        // 页面加载时恢复状态并清空输出
+        restoreState();
+        clearOutput();
+
         function showOutput(text){
-          // 将完整文本写入 pre，pre 不滚动而是撑高页面
           outputText.textContent = text;
-          // 小延迟确保布局更新，然后让页面滚到顶部以便看到输入区（按需求可移除）
-          requestAnimationFrame(()=> {
-            // 把页面滚动到顶部，保持“联合检测”输入区可见（若不需要，删除下一行）
-            // window.scrollTo({ top: 0, behavior: 'smooth' });
-          });
         }
-      
+
+        // 显示自定义模态（只有确定按钮）
+        function showModal(message) {
+          modalBody.textContent = message || 'TOKEN 无效或已过期，请点击确定刷新界面以继续操作。';
+          modalBackdrop.style.display = 'flex';
+          modalOk.focus();
+        }
+
+        function hideModal() {
+          modalBackdrop.style.display = 'none';
+        }
+
+        // 当检测返回 token 过期后，展示模态；点击确定则刷新（已保存表单）
+        async function handleResponse(res) {
+          const status = res.status;
+          let bodyText = '';
+          try { bodyText = await res.text(); } catch(e){ bodyText = ''; }
+          // 尝试解析为 JSON
+          let j = null;
+          try { j = JSON.parse(bodyText); } catch(e){ j = null; }
+
+          const msg = (j && (j.message || j.error)) ? (j.message || j.error) : bodyText;
+
+          // 判断是否为 token 过期/无效错误：403 或 文本包含 “无效的TOKEN”
+          if (status === 403 || (typeof msg === 'string' && msg.includes('无效的TOKEN'))) {
+            // 在输出区显示服务端返回的错误供用户查看
+            showOutput(typeof msg === 'string' && msg ? msg : ('HTTP ' + status));
+            // 显示模态并在确定时刷新
+            showModal(typeof msg === 'string' && msg ? msg : ('HTTP ' + status + '：TOKEN 无效或已过期'));
+            return true; // 已处理
+          }
+
+          return false; // 非 token 错误
+        }
+
         async function callCheck(params){
           showOutput('检测中...');
           try {
             const res = await fetch('/check' + params);
+            // 若返回非 2xx，先尝试处理 token 过期的情况
+            if (!res.ok) {
+              const handled = await handleResponse(res);
+              if (handled) return;
+              // 不是 token 问题，显示响应文本或 JSON
+              let text;
+              try { text = await res.text(); } catch(e) { text = 'HTTP error: ' + res.status; }
+              // 尝试格式化 JSON
+              try {
+                const parsed = JSON.parse(text);
+                showOutput(JSON.stringify(parsed, null, 2));
+              } catch (e) {
+                showOutput(text);
+              }
+              return;
+            }
+            // OK 响应
             const j = await res.json();
             showOutput(JSON.stringify(j, null, 2));
           } catch(err){
-            showOutput('请求失败: ' + (err.message || err));
+            // 网络层错误或 fetch 抛出
+            const msg = err && err.message ? err.message : String(err);
+            // 若错误信息包含 token 相关提示，也做相同处理
+            if (msg.includes('TOKEN') || msg.includes('无效的TOKEN')) {
+              showModal('TOKEN 无效或已过期，请点击确定刷新页面以继续。');
+              return;
+            }
+            showOutput('请求失败: ' + msg);
           }
         }
-      
+
         runBtn.addEventListener('click', ()=>{
           const mode = modeSelect.value;
           const v = inputMain.value.trim();
+          // 保存状态以便在 token 过期后重载仍能恢复
+          saveState();
+
           if(mode === 'nat64'){
             const server = inputMain.value.trim();
             const host = inputSecondary.value.trim() || 'cf.hw.090227.xyz';
@@ -732,15 +867,30 @@ export default {
             return;
           }
           if(!v){ alert('请输入检测目标'); return; }
+
+          if(mode === 'proxyip') {
+            // 支持 1.2.3.4:443 / 1.1.1.1,443 / domain:port / [ipv6]:port
+            const normalized = v.replace(/\s*,\s*/g, ':');
+            callCheck('?type=proxyip&proxyip=' + encodeURIComponent(normalized));
+            return;
+          }
+
           if(mode === 'socks5') callCheck('?type=socks5&socks5=' + encodeURIComponent(v));
           else if(mode === 'http') callCheck('?type=http&http=' + encodeURIComponent(v));
-          else if(mode === 'proxyip') callCheck('?type=proxyip&proxyip=' + encodeURIComponent(v));
         });
-      
+
         inputMain.addEventListener('keypress', (e)=>{ if(e.key==='Enter') runBtn.click(); });
         inputSecondary.addEventListener('keypress', (e)=>{ if(e.key==='Enter') runBtn.click(); });
-      
-        // 可选：当窗口大小变化时无须额外处理，页面自然重新流式布局
+
+        // 点击模态确定：保存表单状态（已保存）并刷新页面；刷新后 restoreState() 会恢复输入并 clearOutput() 清空输出
+        modalOk.addEventListener('click', ()=>{
+          saveState();
+          hideModal();
+          location.reload();
+        });
+
+        // 在离开页面前保存表单状态
+        window.addEventListener('beforeunload', saveState);
       })();
       </script>
       </body>
