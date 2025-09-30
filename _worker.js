@@ -561,57 +561,90 @@ export default {
       <title>联合检测 — SOCKS5 / HTTP / NAT64 / ProxyIP</title>
       <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
       <style>
-      :root{
+      :root {
         --bg1: linear-gradient(135deg,#667eea 0%,#764ba2 100%);
         --muted:#6c757d;
         --accent:#2f80ed;
         --max-width:960px;
       }
       
-      /* 布局基础：允许页面整体滚动 */
       *{box-sizing:border-box;margin:0;padding:0}
       html,body{height:100%}
+      
       body{
         font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans SC","PingFang SC","Microsoft YaHei",Arial;
-        background:var(--bg1);
+        background: var(--bg1);
+        background-attachment: fixed;   /* 背景固定，避免分层 */
+        background-size: cover;
+        background-repeat: no-repeat;
+        background-position: center;
         color:#222;
         -webkit-font-smoothing:antialiased;
         -moz-osx-font-smoothing:grayscale;
         display:flex;
-        align-items:flex-start;
-        justify-content:center;
-        padding:28px;
-        overflow:auto; /* 允许页面整体滚动 */
+        flex-direction:column;
+        min-height:100vh; /* 页面最小高度 = 视口高度 */
       }
       
-      /* 居中容器 */
       .container{
+        flex:1; /* 占满剩余空间 */
         width:100%;
         max-width:var(--max-width);
         margin:0 auto;
         display:flex;
         flex-direction:column;
-        gap:14px;
+        gap:16px;
+        padding:28px;
+        padding-bottom:40px; /* 保证底部始终有空间 */
       }
       
-      /* 标题与卡片 */
-      .card{background:rgba(255,255,255,0.98);border-radius:12px;padding:16px;box-shadow:0 8px 30px rgba(10,10,10,0.06)}
+      .card,
+      .output-card {
+        background:#fff; /* 统一白色卡片风格 */
+        border-radius:12px;
+        padding:16px;
+        box-shadow:0 6px 20px rgba(0,0,0,0.08);
+      }
+      
       .header{display:flex;align-items:center;justify-content:space-between}
       .title h1{font-size:22px;color:#fff}
       .title p{color:rgba(255,255,255,0.92);font-size:13px}
       
-      /* 表单行 */
       .form-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-      .select{min-width:140px;padding:10px 12px;border-radius:10px;border:1px solid rgba(0,0,0,0.08);background:#fff;font-size:13px;height:44px}
-      .input{flex:1;min-width:220px;padding:12px 14px;border-radius:10px;border:1px solid #e6e9ee;background:#fff;color:#222;height:44px}
+      .select,.input,.btn{
+        height:44px;
+        border-radius:10px;
+        font-size:14px;
+      }
+      .select{
+        min-width:140px;
+        padding:0 12px;
+        border:1px solid #e0e0e0;
+        background:#fff;
+      }
+      .input{
+        flex:1;
+        min-width:220px;
+        padding:0 14px;
+        border:1px solid #e0e0e0;
+        background:#fff;
+        color:#222;
+      }
       .input.small-input{max-width:280px}
-      .btn{background:linear-gradient(135deg,var(--accent),#1866d6);border:0;color:#fff;font-weight:600;cursor:pointer;padding:12px 16px;border-radius:10px;height:44px;white-space:nowrap}
+      .btn{
+        background:linear-gradient(135deg,var(--accent),#1866d6);
+        border:0;
+        color:#fff;
+        font-weight:600;
+        cursor:pointer;
+        padding:0 16px;
+        white-space:nowrap;
+        transition:all 0.15s ease;
+      }
+      .btn:hover{filter:brightness(1.05);transform:translateY(-1px)}
       
-      /* 输出区：不内部滚动，随内容自然撑高；页面整体滚动查看 */
-      .output-wrapper{display:flex;flex-direction:column;gap:8px;min-height:120px;max-width:100%}
-      .output-card{display:flex;flex-direction:column;border-radius:10px;border:1px solid #e9e9ee;background:#fbfbfb;overflow:visible}
-      .output-header{padding:10px 12px;color:var(--muted);font-size:13px;border-bottom:1px solid #f0f0f3;background:linear-gradient(180deg,rgba(255,255,255,0.6),rgba(255,255,255,0))}
-      /* 关键：让 pre 不产生内部滚动而是自然展开 */
+      .output-wrapper{margin-top:12px}
+      .output-header{font-size:13px;color:var(--muted);margin-bottom:6px}
       #outputText{
         padding:12px;
         margin:0;
@@ -619,31 +652,26 @@ export default {
         font-size:13px;
         line-height:1.45;
         color:#111;
-        overflow:visible;       /* 不在 pre 内部滚动 */
+        background:#fff;
+        border:1px solid #eee;
+        border-radius:8px;
         white-space:pre-wrap;
         word-break:break-word;
+        overflow:visible;
+        min-height:400px; /* 默认更大，避免缩小 */
       }
-
-      /* 简单模态窗口样式 */
-      .modal-backdrop{
-        position:fixed;inset:0;background:rgba(0,0,0,0.45);display:none;align-items:center;justify-content:center;z-index:9999;
-      }
-      .modal{
-        background:#fff;padding:18px;border-radius:10px;max-width:520px;width:92%;box-shadow:0 10px 30px rgba(0,0,0,0.25);color:#111;
-      }
-      .modal .modal-title{font-weight:600;margin-bottom:8px}
-      .modal .modal-body{color:#444;margin-bottom:14px;white-space:pre-wrap}
-      .modal .modal-actions{text-align:right}
-      .modal .modal-btn{background:linear-gradient(135deg,var(--accent),#1866d6);color:#fff;border:0;padding:10px 14px;border-radius:8px;cursor:pointer}
-
-      /* 页脚 */
-      .footer{text-align:center;color:rgba(255,255,255,0.9);font-size:13px;padding-top:4px}
       
-      /* 响应式 */
+      .footer{
+        text-align:center;
+        color:rgba(255,255,255,0.9);
+        font-size:13px;
+        margin-top:auto;       /* 自动推到底部 */
+        padding-bottom:20px;   /* 固定留白 */
+      }
+      
       @media(max-width:720px){
         .form-row{flex-direction:column;align-items:stretch}
-        .select{width:100%}
-        .btn{width:100%}
+        .select,.btn{width:100%}
       }
       </style>
       </head>
