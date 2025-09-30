@@ -622,25 +622,29 @@ export default {
         border:1px solid #e0e0e0;
         background:#fff;
       }
-      .input{
-        flex:1;
-        min-width:220px;
-        padding:0 14px;
-        border:1px solid #e0e0e0;
-        background:#fff;
-        color:#222;
-      }
-      .input.small-input{max-width:280px}
-      .btn{
-        background:linear-gradient(135deg,var(--accent),#1866d6);
-        border:0;
-        color:#fff;
-        font-weight:600;
-        cursor:pointer;
-        padding:0 16px;
-        white-space:nowrap;
-        transition:all 0.15s ease;
-      }
+.input{
+  flex:1;
+  width:100%;
+  min-width:0;
+  padding:10px 14px;
+  line-height:1.4;
+  font-size:15px;
+  border:1px solid #e0e0e0;
+  background:#fff;
+  color:#222;
+  border-radius:10px;
+}
+.input.small-input{max-width:280px}
+.btn{
+  background:linear-gradient(135deg,var(--accent),#1866d6);
+  border:0;
+  color:#fff;
+  font-weight:600;
+  cursor:pointer;
+  padding:0 16px;
+  white-space:nowrap;
+  transition:all 0.15s ease;
+}
       .btn:hover{filter:brightness(1.05);transform:translateY(-1px)}
       
       .output-wrapper{margin-top:12px}
@@ -931,3 +935,4 @@ export default {
     return new Response('<!doctype html><html><body><h3>Service running. Use /check endpoint.</h3></body></html>', { headers: { 'Content-Type':'text/html;charset=UTF-8' } });
   }
 };
+
